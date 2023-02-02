@@ -2,8 +2,27 @@
 const logger = require("./logger").app;
 const db = require("./db/db");
 const config = require("config");
+const express = require("express");
+const { response } = require("express");
 
 logger.debug("Start application");
+
+const app = express();
+
+app.use((request, response, next) => {
+    if (!request.body) response.status(400).json({ error: "Undefined body" });
+    else next();
+});
+app.use(express.json());
+
+app.post("/auth", (request, response) => {});
+
+app.listen(config.Server.port, () => {
+    logger.info(
+        `Server started at ${config.Server.host}:${config.Server.port}`
+    );
+});
+
 // db.CreateUser("user", "pass")
 //     .then((err) => {
 //         logger.debug("User created");
