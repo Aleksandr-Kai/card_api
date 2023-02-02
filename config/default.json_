@@ -1,0 +1,11 @@
+{
+  "DataBase": {
+    "name": "dbname",
+    "user":"username",
+    "password":"password",
+    "options":{
+      "dialect":"postgres",
+      "host": "localhost"
+    }
+  }
+}
