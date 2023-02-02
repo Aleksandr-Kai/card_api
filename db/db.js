@@ -21,8 +21,12 @@ const Word = require(`./models/word`)(sequelize);
     try {
         await sequelize.authenticate();
 
-        User.hasMany(List);
-        List.Words = List.hasMany(Word);
+        User.hasMany(List, {
+            onDelete: "CASCADE",
+        });
+        List.Words = List.hasMany(Word, {
+            onDelete: "CASCADE",
+        });
 
         await User.sync();
         await List.sync();
@@ -226,6 +230,86 @@ module.exports.GetListByName = async (login, name) => {
             where: {
                 name: name,
                 UserId: user.id,
+            },
+        });
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+//********************************************************************************** */
+module.exports.MarkWord = async (id, studied) => {
+    try {
+        await Word.update(
+            {
+                studied: studied,
+            },
+            {
+                where: {
+                    id: id,
+                },
+            }
+        );
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+
+module.exports.SetWordTranslation = async (id, translation) => {
+    try {
+        await Word.update(
+            {
+                translation: translation,
+            },
+            {
+                where: {
+                    id: id,
+                },
+            }
+        );
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+
+module.exports.DeleteWord = async (id) => {
+    try {
+        await Word.destroy({
+            where: {
+                id: id,
+            },
+        });
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+//********************************************************************************** */
+module.exports.RenameList = async (id, name) => {
+    try {
+        await List.update(
+            {
+                name: name,
+            },
+            {
+                where: {
+                    id: id,
+                },
+            }
+        );
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+
+module.exports.DeleteList = async (id) => {
+    try {
+        await List.destroy({
+            where: {
+                id: id,
             },
         });
     } catch (e) {

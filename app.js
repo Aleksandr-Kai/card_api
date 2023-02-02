@@ -34,7 +34,7 @@ logger.debug("Start application");
 //     },
 // ]);
 
-// db.GetWords("user","list")
+// db.GetWords("user","list1")
 //     .then((words) => {
 //         logger.info(words);
 //     })
@@ -46,6 +46,10 @@ logger.debug("Start application");
 //     })
 //     .catch((error) => logger.error(error));
 
-db.GetListsOfUser("user")
-    .then((user) => logger.info(user))
-    .catch((error) => logger.error(error));
+// db.GetListsOfUser("user")
+//     .then((user) => logger.info(user))
+//     .catch((error) => logger.error(error));
+
+// db.DeleteList(1)
+//     .then(() => logger.info('Deleted'))
+//     .catch((error) => logger.error(error));
