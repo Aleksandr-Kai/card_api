@@ -130,7 +130,6 @@ module.exports.AddWordsToList = async (login, listName, words) => {
                 include: [
                     {
                         association: List.Words,
-                        // include: [User.Addresses],
                     },
                 ],
             }
@@ -142,13 +141,15 @@ module.exports.AddWordsToList = async (login, listName, words) => {
     }
 };
 
-module.exports.GetWords = async (login, listName) => {
+module.exports.GetWords = async (login, listName, pageSize, pageNum) => {
     try {
         const user = await this.FindUser(login);
         if (user === null) {
             logger.error(`GetWords fail: user '${login}' not found`);
             return [];
         }
+        if (pageNum === undefined) pageNum = 0;
+        if (pageSize === undefined) pageSize = 100;
 
         if (listName === undefined) {
             const lists = await List.findAll({
@@ -161,12 +162,17 @@ module.exports.GetWords = async (login, listName) => {
             lists.forEach((list) => {
                 ids.push(list.id);
             });
-            const words = await Word.findAll({
+
+            const words = await Word.findAndCountAll({
                 where: {
                     ListId: ids,
                 },
+                offset: pageNum,
+                limit: pageSize,
+                order: [["word", "ASC"]],
             });
             if (words === null) return [];
+
             return JSON.parse(JSON.stringify(words));
         }
 
@@ -177,12 +183,16 @@ module.exports.GetWords = async (login, listName) => {
             },
         });
         if (list === null) return [];
-        const words = await Word.findAll({
+        const words = await Word.findAndCountAll({
             where: {
                 ListId: list.id,
             },
+            offset: pageNum,
+            limit: pageSize,
+            order: [["word", "ASC"]],
         });
-        if (words === null) return [];
+        words.pageSize = pageSize;
+        words.pageNum = pageNum;
         return JSON.parse(JSON.stringify(words));
     } catch (e) {
         logger.debug(e);
@@ -192,12 +202,12 @@ module.exports.GetWords = async (login, listName) => {
 
 module.exports.GetListByID = async (id) => {
     try {
-        const lists = await List.findAll({
+        const list = await List.findAll({
             where: {
                 id: id,
             },
         });
-        return JSON.parse(JSON.stringify(lists));
+        return JSON.parse(JSON.stringify(list));
     } catch (e) {
         logger.debug(e);
         throw e;

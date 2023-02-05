@@ -5,6 +5,7 @@ const config = require("config");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const { dirname } = require("path");
+const { response } = require("express");
 
 const appDir = dirname(require.main.filename);
 const signature = "qwerty";
@@ -12,6 +13,10 @@ const signature = "qwerty";
 logger.debug("Start application");
 
 const app = express();
+
+app.get("/", (_, response) => {
+    response.json({});
+});
 
 app.use(express.json());
 
@@ -86,8 +91,38 @@ app.use((request, response, next) => {
     );
 });
 //********************************************************************** */
-app.get("/", (_, response) => {
-    response.json({});
+app.get("/api/lists", async (request, response) => {
+    const lists = await db.GetListsOfUser(request.user.login);
+    response.json(lists);
+});
+
+app.get("/api/list/:name", async (request, response) => {
+    const list = await db.GetListByName(
+        request.user.login,
+        request.params.name
+    );
+    if (list === null) {
+        response.status(406).json({ error: "List not found" });
+        return;
+    }
+    const words = await db.GetWords(
+        request.user.login,
+        request.params.name,
+        request.query.pageSize,
+        request.query.pageNum
+    );
+    response.json(words);
+});
+
+app.post("/api/list/:name", async (request, response) => {
+    const { words } = request.body;
+    const ok = await db.AddWordsToList(
+        request.user.login,
+        request.params.name,
+        words
+    );
+    if (ok) response.json({ status: "OK" });
+    else response.status(406).json({ status: "Can not add words" });
 });
 
 app.use((_, response) => {
