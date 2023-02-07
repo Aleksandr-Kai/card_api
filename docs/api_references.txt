@@ -1,0 +1,165 @@
+Registration request:
+    POST /api/auth
+        {
+            login: <User login>,
+            password: <User password>,
+            create: true
+        }
+    Success:
+        {
+            status: <message>
+        }
+    Failure:
+        {
+            error: <message>
+        }
+-----------------------------------------------
+Authentication request:
+    POST /api/auth
+        {
+            login: <User login>,
+            password: <User password>,
+        }
+    Success:
+        {
+            token: <access token>
+        }
+    Failure:
+        {
+            error: <message>
+        }
+-----------------------------------------------
+Change password request:
+    POST /api/auth
+        {
+            login: <User login>,
+            password: <User password>,
+            newpassword: <User new password>,
+        }
+    Success:
+        {
+            status: <message>
+        }
+    Failure:
+        {
+            error: <message>
+        }
+-----------------------------------------------
+All requests:
+    Headers should contain
+        authorization: <access token>
+-----------------------------------------------
+Get lists request:
+    GET /api/lists
+Success:
+    {
+        Lists: Array of ListModel
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Get words from list request:
+    GET /api/lists/:listid/words
+Success:
+    {
+        Words: Array of WordModel
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Create list request:
+    POST /api/lists
+    {
+        listName: <name of the list>
+    }
+Success:
+    {
+        status: <message>
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Rename list request:
+    PUT /api/lists/:listid
+    {
+        listName: <new name of the list>
+    }
+Success:
+    {
+        status: <message>
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Add words request:
+    POST /api/lists/:listid/words
+    {
+        words: Array of WordModel
+    }
+Success:
+    {
+        status: <message>
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Update word request:
+    POST /api/lists/:listid/words/:wordid
+    {
+        word: WordModel
+    }
+Success:
+    {
+        status: <message>
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Delete word request:
+    DELETE /api/lists/:listid/words/:wordid
+Success:
+    {
+        status: <message>
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+Delete list request:
+    DELETE /api/lists/:listid
+Success:
+    {
+        status: <message>
+    }
+Failure:
+    {
+        error: <message>
+    }
+-----------------------------------------------
+WordModel
+    {
+        word: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        translation: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        studied: {
+            type: DataTypes.BOOLEAN,
+        },
+    }

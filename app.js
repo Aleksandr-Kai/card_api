@@ -5,7 +5,7 @@ const config = require("config");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const { dirname } = require("path");
-const { response } = require("express");
+const md5 = require("md5");
 
 const appDir = dirname(require.main.filename);
 const signature = "qwerty";
@@ -13,10 +13,6 @@ const signature = "qwerty";
 logger.debug("Start application");
 
 const app = express();
-
-app.get("/", (_, response) => {
-    response.json({});
-});
 
 app.use(express.json());
 
@@ -27,16 +23,17 @@ app.use((request, response, next) => {
     } else next();
 });
 
-app.use("/auth", (request, response, next) => {
+app.use("/api/auth", (request, response, next) => {
     if (!request.body.login || !request.body.password) {
         response
             .status(400)
             .json({ error: "Required field 'login' or 'password' not found" });
     } else next();
 });
+//********************************************************************** */
 
-app.post("/auth", async (request, response) => {
-    const { login, password, create } = request.body;
+app.post("/api/auth", async (request, response) => {
+    const { login, password, newpassword, create } = request.body;
 
     if (create) {
         const created = await db.CreateUser(login, password);
@@ -47,7 +44,7 @@ app.post("/auth", async (request, response) => {
 
         logger.info(`New user registred: ${login}`);
 
-        response.json({ Registration: "OK" });
+        response.json({ status: "User registred" });
         return;
     }
 
@@ -61,8 +58,18 @@ app.post("/auth", async (request, response) => {
 
     logger.info(`User '${login}' authenticated`);
 
-    const token = jwt.sign(user, signature);
-    response.json({ token: token });
+    if (newpassword) {
+        db.UpdateUserPassword(user.login, newpassword)
+            .then(() => {
+                response.json({ status: "Password changed" });
+            })
+            .catch((error) =>
+                response.status(400).json({ error: error.message })
+            );
+    } else {
+        const token = jwt.sign(user, signature);
+        response.json({ token: token });
+    }
 });
 
 //********************************************************************** */
@@ -85,48 +92,168 @@ app.use((request, response, next) => {
                 response.status(403).json({ error: "User not found" });
                 return;
             }
+            if (payload.hash !== user.hash) {
+                response.status(403).json({ error: "Bad token" });
+                return;
+            }
             request.user = user;
             next();
         }
     );
 });
 //********************************************************************** */
-app.get("/api/lists", async (request, response) => {
-    const lists = await db.GetListsOfUser(request.user.login);
-    response.json(lists);
+app.get("/", (request, response) => {
+    response.json({});
 });
 
-app.get("/api/list/:name", async (request, response) => {
-    const list = await db.GetListByName(
-        request.user.login,
-        request.params.name
+app.get("/api/lists", (request, response) => {
+    db.GetLists(request.user.id)
+        .then((lists) => response.json({ Lists: lists }))
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `Can not get lists` });
+        });
+});
+
+app.get("/api/lists/:listid/words", async (request, response) => {
+    const list = await db.FindListOfUser(
+        request.params.listid,
+        request.user.id
     );
     if (list === null) {
-        response.status(406).json({ error: "List not found" });
+        response.status(406).json({ error: `List not found` });
         return;
     }
-    const words = await db.GetWords(
-        request.user.login,
-        request.params.name,
-        request.query.pageSize,
-        request.query.pageNum
-    );
-    response.json(words);
+    db.GetWords(list.id)
+        .then((words) => {
+            response.json({ Words: words });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `Can not get words` });
+        });
 });
 
-app.post("/api/list/:name", async (request, response) => {
+app.post("/api/lists", (request, response) => {
+    const { listName } = request.body;
+    db.CreateList(listName, request.user.id)
+        .then(() => {
+            response.json({ status: `List '${listName}' created` });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response
+                .status(500)
+                .json({ error: `List '${listName}' can not be created` });
+        });
+});
+
+app.put("/api/lists/:listid", async (request, response) => {
+    const list = await db.FindListOfUser(
+        request.params.listid,
+        request.user.id
+    );
+    if (list === null) {
+        response.status(406).json({ error: `List not found` });
+        return;
+    }
+
+    const { listName } = request.body;
+    db.RenameList(list.id, listName)
+        .then(() => {
+            response.json({ status: `List renamed` });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `List can not be renamed` });
+        });
+});
+
+app.post("/api/lists/:listid/words", async (request, response) => {
+    const list = await db.FindListOfUser(
+        request.params.listid,
+        request.user.id
+    );
+    if (list === null) {
+        response.status(406).json({ error: `List not found` });
+        return;
+    }
+
     const { words } = request.body;
-    const ok = await db.AddWordsToList(
-        request.user.login,
-        request.params.name,
-        words
-    );
-    if (ok) response.json({ status: "OK" });
-    else response.status(406).json({ status: "Can not add words" });
+    db.AddWordsToList(words, list.id)
+        .then(() => {
+            response.json({ status: `Created` });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `Can not be created` });
+        });
 });
 
-app.use((_, response) => {
-    response.status(404).json({ Page: "Not found" });
+app.put("/api/lists/:listid/words/:wordid", async (request, response) => {
+    const list = await db.FindListOfUser(
+        request.params.listid,
+        request.user.id
+    );
+    if (list === null) {
+        response.status(406).json({ error: `List not found` });
+        return;
+    }
+
+    db.UpdateWord(request.params.wordid, request.body.word)
+        .then(() => {
+            response.json({ status: "Updated" });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `Can not be updated` });
+        });
+});
+
+app.delete("/api/lists/:listid/words/:wordid", async (request, response) => {
+    const list = await db.FindListOfUser(
+        request.params.listid,
+        request.user.id
+    );
+    if (list === null) {
+        response.status(406).json({ error: `List not found` });
+        return;
+    }
+
+    db.DeleteWord(request.params.wordid)
+        .then(() => {
+            response.json({ status: "Deleted" });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `Can not be deleted` });
+        });
+});
+
+app.delete("/api/lists/:listid", async (request, response) => {
+    const list = await db.FindListOfUser(
+        request.params.listid,
+        request.user.id
+    );
+    if (list === null) {
+        response.status(406).json({ error: `List not found` });
+        return;
+    }
+
+    db.DeleteList(list.id)
+        .then(() => {
+            response.json({ status: "Deleted" });
+        })
+        .catch((error) => {
+            logger.error(error.message);
+            response.status(500).json({ error: `Can not be deleted` });
+        });
+});
+
+app.use((request, response) => {
+    response
+        .status(404)
+        .json({ error: `Not found: ${request.method} ${request.url}` });
 });
 //********************************************************************** */
 app.listen(config.Server.port, () => {
@@ -134,53 +261,3 @@ app.listen(config.Server.port, () => {
         `Server started at ${config.Server.host}:${config.Server.port}`
     );
 });
-
-// db.CreateUser("user", "pass")
-//     .then((err) => {
-//         logger.debug("User created");
-//     })
-//     .catch((err) => {
-//         logger.error(err.message);
-//     });
-
-// db.FindUser("user", "pass")
-//     .then((user) => {
-//         if (user != null) logger.info(user.id);
-//         else logger.trace("User not found");
-//     })
-//     .catch((err) => {
-//         logger.error(err.message);
-//     });
-
-// db.AddWordsToList("user", "list2", [
-//     {
-//         word: "word5",
-//         translation: "слово5",
-//         studied: false,
-//     },
-//     {
-//         word: "word5",
-//         translation: "слово5",
-//         studied: false,
-//     },
-// ]);
-
-// db.GetWords("user","list1")
-//     .then((words) => {
-//         logger.info(words);
-//     })
-//     .catch((error) => logger.error(error));
-
-// db.GetList(3)
-//     .then((lists) => {
-//         logger.info(lists);
-//     })
-//     .catch((error) => logger.error(error));
-
-// db.GetListsOfUser("user")
-//     .then((user) => logger.info(user))
-//     .catch((error) => logger.error(error));
-
-// db.DeleteList(1)
-//     .then(() => logger.info('Deleted'))
-//     .catch((error) => logger.error(error));

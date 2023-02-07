@@ -1,8 +1,9 @@
 const logger = require("../logger").db;
 const loggersql = require("../logger").sql;
 const config = require("config").DataBase;
-const { DataTypes, Sequelize } = require("sequelize");
+const { DataTypes, Sequelize, TIME } = require("sequelize");
 const PostgresResponseCodes = require("postgres-response-codes");
+const md5 = require("md5");
 
 config.options.logging = (msg) => loggersql.debug(msg);
 
@@ -44,6 +45,7 @@ module.exports.CreateUser = async (login, password) => {
         await User.create({
             login: login,
             password: password,
+            hash: md5(Date.now().toString()),
         });
         return true;
     } catch (e) {
@@ -64,7 +66,7 @@ module.exports.FindUser = async (login, password) => {
     if (password) where.password = password;
     try {
         const user = await User.findOne({
-            attributes: ["id", "login", "admin"],
+            attributes: ["id", "login", "admin", "hash"],
             where: where,
         });
         return JSON.parse(JSON.stringify(user));
@@ -89,122 +91,41 @@ module.exports.DeleteUser = async (login) => {
 
 module.exports.UpdateUserPassword = async (login, password) => {
     try {
-        await User.findOne({
-            password: password,
-            where: {
-                login: login,
+        await User.update(
+            {
+                password: password,
+                hash: md5(Date.now().toString()),
             },
-        });
+            {
+                where: {
+                    login: login,
+                },
+            }
+        );
     } catch (e) {
         logger.debug(e);
         throw e;
     }
 };
 //********************************************************************************** */
-module.exports.AddWordsToList = async (login, listName, words) => {
+module.exports.CreateList = async (listName, userID) => {
     try {
-        const user = await this.FindUser(login);
-        if (user === null) return false;
-
-        const list = await List.findOne({
-            where: {
-                name: listName,
-                UserId: user.id,
-            },
+        await List.create({
+            name: listName,
+            UserId: userID,
         });
-        if (list !== null) {
-            words.forEach((word) => {
-                word.ListId = list.id;
-            });
-            Word.bulkCreate(words);
-            return true;
-        }
-
-        await List.create(
-            {
-                name: listName,
-                UserId: user.id,
-                Words: words,
-            },
-            {
-                include: [
-                    {
-                        association: List.Words,
-                    },
-                ],
-            }
-        );
-        return true;
-    } catch (e) {
+    } catch (error) {
         logger.debug(e);
         throw e;
     }
 };
 
-module.exports.GetWords = async (login, listName, pageSize, pageNum) => {
+module.exports.FindListOfUser = async (listID, userID) => {
     try {
-        const user = await this.FindUser(login);
-        if (user === null) {
-            logger.error(`GetWords fail: user '${login}' not found`);
-            return [];
-        }
-        if (pageNum === undefined) pageNum = 0;
-        if (pageSize === undefined) pageSize = 100;
-
-        if (listName === undefined) {
-            const lists = await List.findAll({
-                where: {
-                    UserId: user.id,
-                },
-            });
-            if (lists === null) return [];
-            const ids = [];
-            lists.forEach((list) => {
-                ids.push(list.id);
-            });
-
-            const words = await Word.findAndCountAll({
-                where: {
-                    ListId: ids,
-                },
-                offset: pageNum,
-                limit: pageSize,
-                order: [["word", "ASC"]],
-            });
-            if (words === null) return [];
-
-            return JSON.parse(JSON.stringify(words));
-        }
-
         const list = await List.findOne({
             where: {
-                name: listName,
-                UserId: user.id,
-            },
-        });
-        if (list === null) return [];
-        const words = await Word.findAndCountAll({
-            where: {
-                ListId: list.id,
-            },
-            offset: pageNum,
-            limit: pageSize,
-            order: [["word", "ASC"]],
-        });
-        words.pageSize = pageSize;
-        words.pageNum = pageNum;
-        return JSON.parse(JSON.stringify(words));
-    } catch (e) {
-        logger.debug(e);
-        throw e;
-    }
-};
-
-module.exports.GetListByID = async (id) => {
-    try {
-        const list = await List.findAll({
-            where: {
-                id: id,
+                id: listID,
+                UserId: userID,
             },
         });
         return JSON.parse(JSON.stringify(list));
@@ -214,14 +135,42 @@ module.exports.GetListByID = async (id) => {
     }
 };
 
-module.exports.GetListsOfUser = async (login) => {
+module.exports.AddWordsToList = async (words, listID) => {
     try {
-        const user = await this.FindUser(login);
-        if (user === null) return [];
+        const list = await List.findByPk(listID);
+        if (list === null) throw new Error("List not found");
 
+        words.forEach((word) => {
+            word.ListId = list.id;
+        });
+        Word.bulkCreate(words);
+
+        return true;
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+
+module.exports.GetWords = async (listID) => {
+    try {
+        const words = await Word.findAll({
+            where: {
+                ListId: listID,
+            },
+        });
+        return JSON.parse(JSON.stringify(words));
+    } catch (e) {
+        logger.debug(e);
+        throw e;
+    }
+};
+
+module.exports.GetLists = async (userID) => {
+    try {
         const lists = await List.findAll({
             where: {
-                UserId: user.id,
+                UserId: userID,
             },
         });
         return JSON.parse(JSON.stringify(lists));
@@ -230,30 +179,11 @@ module.exports.GetListsOfUser = async (login) => {
         throw e;
     }
 };
-
-module.exports.GetListByName = async (login, name) => {
-    try {
-        const user = await this.FindUser(login);
-        if (user === null) return null;
-
-        return await List.findOne({
-            where: {
-                name: name,
-                UserId: user.id,
-            },
-        });
-    } catch (e) {
-        logger.debug(e);
-        throw e;
-    }
-};
 //********************************************************************************** */
-module.exports.MarkWord = async (id, studied) => {
+module.exports.UpdateWord = async (id,word) => {
     try {
         await Word.update(
-            {
-                studied: studied,
-            },
+            word,
             {
                 where: {
                     id: id,
@@ -297,11 +227,11 @@ module.exports.DeleteWord = async (id) => {
     }
 };
 //********************************************************************************** */
-module.exports.RenameList = async (id, name) => {
+module.exports.RenameList = async (id, newName) => {
     try {
         await List.update(
             {
-                name: name,
+                name: newName,
             },
             {
                 where: {

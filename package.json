@@ -4,6 +4,7 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.0",
     "log4js": "^6.7.1",
+    "md5": "^2.3.0",
     "pg": "^8.9.0",
     "postgres-response-codes": "^1.1.2",
     "sequelize": "^6.28.0"
