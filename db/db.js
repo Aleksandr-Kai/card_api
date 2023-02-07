@@ -1,7 +1,7 @@
 const logger = require("../logger").db;
 const loggersql = require("../logger").sql;
 const config = require("config").DataBase;
-const { DataTypes, Sequelize, TIME } = require("sequelize");
+const { Sequelize } = require("sequelize");
 const PostgresResponseCodes = require("postgres-response-codes");
 const md5 = require("md5");
 
@@ -180,16 +180,13 @@ module.exports.GetLists = async (userID) => {
     }
 };
 //********************************************************************************** */
-module.exports.UpdateWord = async (id,word) => {
+module.exports.UpdateWord = async (id, word) => {
     try {
-        await Word.update(
-            word,
-            {
-                where: {
-                    id: id,
-                },
-            }
-        );
+        await Word.update(word, {
+            where: {
+                id: id,
+            },
+        });
     } catch (e) {
         logger.debug(e);
         throw e;
