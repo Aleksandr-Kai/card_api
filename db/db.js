@@ -18,45 +18,39 @@ const User = require(`./models/user`)(sequelize);
 const List = require(`./models/list`)(sequelize);
 const Word = require(`./models/word`)(sequelize);
 
-(async () => {
-    try {
-        await sequelize.authenticate();
-
+sequelize
+    .authenticate()
+    .then(() => {
         User.hasMany(List, {
             onDelete: "CASCADE",
         });
         List.Words = List.hasMany(Word, {
             onDelete: "CASCADE",
         });
-
-        await User.sync();
-        await List.sync();
-        await Word.sync();
-
-        await sequelize.sync();
-    } catch (error) {
-        logger.debug(error);
-    }
-})();
+        return Promise.all([
+            User.sync(),
+            List.sync(),
+            Word.sync(),
+            sequelize.sync(),
+        ]);
+    })
+    .catch((error) => logger.debug(error));
 
 //********************************************************************************** */
 module.exports.CreateUser = async (login, password) => {
-    try {
-        await User.create({
-            login: login,
-            password: password,
-            hash: md5(Date.now().toString()),
-        });
-        return true;
-    } catch (e) {
+    return User.create({
+        login: login,
+        password: password,
+        hash: md5(Date.now().toString()),
+    }).catch((error) => {
         if (
-            e.original &&
-            e.original.code === PostgresResponseCodes.UNIQUE_VIOLATION
+            error.original &&
+            error.original.code === PostgresResponseCodes.UNIQUE_VIOLATION
         )
-            return false;
-        logger.debug(e);
-        throw e;
-    }
+            return Promise.reject("Login already taken");
+        logger.debug(error);
+        Promise.reject(error);
+    });
 };
 
 module.exports.FindUser = async (login, password) => {
@@ -64,16 +58,21 @@ module.exports.FindUser = async (login, password) => {
         login: login,
     };
     if (password) where.password = password;
-    try {
-        const user = await User.findOne({
-            attributes: ["id", "login", "admin", "hash"],
-            where: where,
+    return User.findOne({
+        attributes: ["id", "login", "admin", "hash"],
+        where: where,
+    })
+        .then((user) => {
+            if (user === null)
+                return Promise.reject(
+                    `User "${login}" not found or incorrect password`
+                );
+            return JSON.parse(JSON.stringify(user));
+        })
+        .catch((error) => {
+            logger.debug(error);
+            return Promise.reject(error);
         });
-        return JSON.parse(JSON.stringify(user));
-    } catch (e) {
-        logger.debug(e);
-        throw e;
-    }
 };
 
 module.exports.DeleteUser = async (login) => {
