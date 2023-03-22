@@ -5,7 +5,6 @@ const config = require("config");
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const { dirname } = require("path");
-const md5 = require("md5");
 
 const appDir = dirname(require.main.filename);
 const signature = "qwerty";
@@ -31,45 +30,58 @@ app.use("/api/auth", (request, response, next) => {
     } else next();
 });
 //********************************************************************** */
+app.post("/api/auth/signup", (request, response) => {
+    const { login, password } = request.body;
+    db.CreateUser(login, password)
+        .then(() => {
+            logger.info(`New user registred: ${login}`);
+            response.json({ status: "User registred" });
+        })
+        .catch((error) => {
+            response.status(409).json({ error });
+        });
+});
 
-app.post("/api/auth", async (request, response) => {
-    const { login, password, newpassword, create } = request.body;
+app.post("/api/auth/login", (request, response) => {
+    const { login, password } = request.body;
 
-    if (create) {
-        const created = await db.CreateUser(login, password);
-        if (!created) {
-            response.status(409).json({ error: "Login already taken" });
-            return;
-        }
+    db.FindUser(login, password)
+        .then((user) => {
+            logger.info(`User '${login}' authenticated`);
+            const token = jwt.sign(user, signature);
+            response.json({ token: token });
+        })
+        .catch((error) => {
+            logger.warn(`Authentication failed for user '${login}'`);
+            response.status(401).json({ error: "Incorrect login or password" });
+        });
+});
 
-        logger.info(`New user registred: ${login}`);
+app.post("/api/auth/password", (request, response) => {
+    const { login, password, newpassword } = request.body;
 
-        response.json({ status: "User registred" });
-        return;
-    }
-
-    const user = await db.FindUser(login, password);
-
-    if (user === null) {
-        logger.warn(`Authentication failed for user '${login}'`);
-        response.status(401).json({ error: "Incorrect login or password" });
-        return;
-    }
-
-    logger.info(`User '${login}' authenticated`);
-
-    if (newpassword) {
-        db.UpdateUserPassword(user.login, newpassword)
-            .then(() => {
-                response.json({ status: "Password changed" });
-            })
-            .catch((error) =>
-                response.status(400).json({ error: error.message })
-            );
-    } else {
-        const token = jwt.sign(user, signature);
-        response.json({ token: token });
-    }
+    db.FindUser(login, password)
+        .catch((error) => {
+            logger.warn(`Authentication failed for user '${login}'`);
+            return Promise.reject({
+                status: 401,
+                message: "Incorrect login or password",
+            });
+        })
+        .then((user) => {
+            logger.info(`User '${login}' authenticated`);
+            return db.UpdateUserPassword(user.login, newpassword);
+        })
+        .then(() => {
+            response.json({ status: "Password changed" });
+        })
+        .catch((error) => {
+            if (error.status) {
+                response.status(error.status).json({ error: error.message });
+                return;
+            }
+            response.status(400).json({ error: error.message });
+        });
 });
 
 //********************************************************************** */
