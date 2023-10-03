@@ -1,116 +1,48 @@
-// const config = require('config')
 const logger = require("./logger").app;
 const db = require("./db/db");
 const config = require("config");
 const express = require("express");
 const jwt = require("jsonwebtoken");
-const { dirname } = require("path");
-
-const appDir = dirname(require.main.filename);
-const signature = "qwerty";
-
-logger.debug("Start application");
+const {
+	setSignature,
+	checkLoginPassword,
+	createUser,
+	authUser,
+	setUserPassword,
+	deleteUser,
+} = require("./controllers/auth");
+const { cors } = require("./controllers/cors");
 
 const app = express();
 
-app.use((request, response, next) => {
-	response.setHeader("Access-Control-Allow-Origin", "*");
-	if (request.method === "OPTIONS") {
-		console.log(`Response CORS OPTIONS: ${request.path}`);
-		response.setHeader("Content-Type", "text/html; charset=UTF-8");
-		response.setHeader("Access-Control-Max-Age", "86400");
-		response.setHeader("Access-Control-Allow-Methods", "PUT,PATCH,DELETE");
-		response.setHeader(
-			"Access-Control-Allow-Headers",
-			"API-Key,Content-Type,If-Modified-Since,Cache-Control,authorization"
-		);
-		response.sendStatus(200);
-	} else next();
-});
+setSignature(config.signature);
 
-// app.options("/api/lists", (request, response) => {
-// 	logger.debug(`OPTIONS request ${request.headers.origin}`);
-// 	response.setHeader("Content-Type", "text/html; charset=UTF-8");
-// 	response.setHeader("Access-Control-Max-Age", "86400");
-// 	response.setHeader("Access-Control-Allow-Methods", "PUT,PATCH,DELETE");
-// 	response.setHeader(
-// 		"Access-Control-Allow-Headers",
-// 		"API-Key,Content-Type,If-Modified-Since,Cache-Control",
-// 		"authorization"
-// 	);
-// 	response.sendStatus(200);
-// });
+app.use(cors);
 
 app.use(express.json());
 
 app.use((request, response, next) => {
-	if (!request.body) {
+	logger.info(`${request.method} ${request.url}`);
+	next();
+});
+
+const CheckBody = (request, response, next) => {
+	if (Object.keys(request.body).length === 0) {
 		response.status(400).json({ error: "Undefined body" });
 		logger.error(`Undefined body: ${request.url}`);
 	} else next();
-});
+};
 
-app.use("/api/auth", (request, response, next) => {
-	if (!request.body.login || !request.body.password) {
-		response
-			.status(400)
-			.json({ error: "Required field 'login' or 'password' not found" });
-	} else next();
-});
-//********************************************************************** */
-app.post("/api/auth/signup", (request, response) => {
-	const { login, password } = request.body;
-	db.CreateUser(login, password)
-		.then(() => {
-			logger.info(`New user registred: ${login}`);
-			response.json({ status: "User registred" });
-		})
-		.catch((error) => {
-			response.status(409).json({ error });
-		});
-});
+const ObjToString = (obj) => {
+	return JSON.stringify(obj).replaceAll('"', "'");
+};
 
-app.post("/api/auth/login", (request, response) => {
-	const { login, password } = request.body;
+app.post("/api/auth/signup", createUser);
+app.use("/api/auth", checkLoginPassword);
 
-	db.FindUser(login, password)
-		.then((user) => {
-			logger.info(`User '${login}' authenticated`);
-			const token = jwt.sign(user, signature);
-			response.json({ token: token });
-		})
-		.catch((error) => {
-			logger.warn(`Authentication failed for user '${login}'`);
-			response.status(401).json({ error: "Incorrect login or password" });
-		});
-});
-
-app.post("/api/auth/password", (request, response) => {
-	const { login, password, newpassword } = request.body;
-
-	db.FindUser(login, password)
-		.catch((error) => {
-			logger.warn(`Authentication failed for user '${login}'`);
-			return Promise.reject({
-				status: 401,
-				message: "Incorrect login or password",
-			});
-		})
-		.then((user) => {
-			logger.info(`User '${login}' authenticated`);
-			return db.UpdateUserPassword(user.login, newpassword);
-		})
-		.then(() => {
-			response.json({ status: "Password changed" });
-		})
-		.catch((error) => {
-			if (error.status) {
-				response.status(error.status).json({ error: error.message });
-				return;
-			}
-			response.status(400).json({ error: error.message });
-		});
-});
+app.post("/api/auth/login", authUser);
+app.post("/api/auth/password", setUserPassword);
+app.delete("/api/users", deleteUser);
 
 //********************************************************************** */
 app.use((request, response, next) => {
@@ -118,28 +50,32 @@ app.use((request, response, next) => {
 		response.status(401).json({ error: "Token is not provided" });
 		return;
 	}
-	jwt.verify(request.headers.authorization, signature, async (error, payload) => {
-		if (error) {
-			logger.error(`Verify token fail: ${error.message}`);
-			response.status(403).json({ error: error.message });
-			return;
+	jwt.verify(
+		request.headers.authorization,
+		config.signature,
+		async (error, payload) => {
+			if (error) {
+				logger.error(`Verify token fail: ${error.message}`);
+				response.status(403).json({ error: error.message });
+				return;
+			}
+			const user = await db.FindUser(payload.login);
+			if (user === null) {
+				response.status(403).json({ error: "User not found" });
+				return;
+			}
+			if (payload.hash !== user.hash) {
+				response.status(403).json({ error: "Bad token" });
+				return;
+			}
+			request.user = user;
+			next();
 		}
-		const user = await db.FindUser(payload.login);
-		if (user === null) {
-			response.status(403).json({ error: "User not found" });
-			return;
-		}
-		if (payload.hash !== user.hash) {
-			response.status(403).json({ error: "Bad token" });
-			return;
-		}
-		request.user = user;
-		next();
-	});
+	);
 });
 //********************************************************************** */
 app.get("/", (request, response) => {
-	response.json({});
+	response.json({ note: "Use '/api' as root node" });
 });
 
 app.get("/api/lists", (request, response) => {
@@ -152,7 +88,8 @@ app.get("/api/lists", (request, response) => {
 });
 
 app.get("/api/lists/:listid/words", async (request, response) => {
-	const list = await db.FindListOfUser(request.params.listid, request.user.id);
+	const listId = parseInt(request.params.listid, 10);
+	const list = await db.FindListOfUser(listId, request.user.id);
 	if (list === null) {
 		response.status(406).json({ error: `List not found` });
 		return;
@@ -198,7 +135,7 @@ app.put("/api/lists/:listid", async (request, response) => {
 });
 
 app.post("/api/lists/:listid/words", async (request, response) => {
-	const list = await db.FindListOfUser(request.params.listid, request.user.id);
+	const list = await db.FindListOfUser(+request.params.listid, request.user.id);
 	if (list === null) {
 		response.status(406).json({ error: `List not found` });
 		return;
@@ -215,16 +152,19 @@ app.post("/api/lists/:listid/words", async (request, response) => {
 		});
 });
 
-app.put("/api/lists/:listid/words/:wordid", async (request, response) => {
-	const list = await db.FindListOfUser(request.params.listid, request.user.id);
+app.put("/api/lists/:listid/words/:wordid", CheckBody, async (request, response) => {
+	const list = await db.FindListOfUser(+request.params.listid, request.user.id);
 	if (list === null) {
 		response.status(406).json({ error: `List not found` });
 		return;
 	}
 
-	db.UpdateWord(request.params.wordid, request.body.word)
+	db.UpdateWord(request.params.wordid, request.body.Word)
 		.then(() => {
-			response.json({ status: "Updated" });
+			response.json({
+				status: "Updated", // with: " + ObjToString(request.body.Word),
+				data: request.body.Word,
+			});
 		})
 		.catch((error) => {
 			logger.error(error.message);
@@ -233,7 +173,7 @@ app.put("/api/lists/:listid/words/:wordid", async (request, response) => {
 });
 
 app.delete("/api/lists/:listid/words/:wordid", async (request, response) => {
-	const list = await db.FindListOfUser(request.params.listid, request.user.id);
+	const list = await db.FindListOfUser(+request.params.listid, request.user.id);
 	if (list === null) {
 		response.status(406).json({ error: `List not found` });
 		return;
@@ -250,7 +190,7 @@ app.delete("/api/lists/:listid/words/:wordid", async (request, response) => {
 });
 
 app.delete("/api/lists/:listid", async (request, response) => {
-	const list = await db.FindListOfUser(request.params.listid, request.user.id);
+	const list = await db.FindListOfUser(+request.params.listid, request.user.id);
 	if (list === null) {
 		response.status(406).json({ error: `List not found` });
 		return;
@@ -271,5 +211,5 @@ app.use((request, response) => {
 });
 //********************************************************************** */
 app.listen(config.Server.port, () => {
-	logger.info(`Server started at ${config.Server.host}:${config.Server.port}`);
+	logger.info(`Server started on port: ${config.Server.port}`);
 });
