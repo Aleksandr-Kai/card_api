@@ -162,6 +162,25 @@ module.exports.GetWords = async (listID) => {
 	}
 };
 
+module.exports.CountWords = async (listID) => {
+	try {
+		const words = await Word.findAll({
+			group: ["studied"],
+			attributes: [
+				"studied",
+				[Sequelize.fn("COUNT", Sequelize.col("studied")), "count"],
+			],
+			where: {
+				ListId: listID,
+			},
+		});
+		return JSON.parse(JSON.stringify(words));
+	} catch (e) {
+		logger.debug(e);
+		throw e;
+	}
+};
+
 module.exports.GetLists = async (userID) => {
 	try {
 		const lists = await List.findAll({
@@ -177,6 +196,7 @@ module.exports.GetLists = async (userID) => {
 };
 //********************************************************************************** */
 module.exports.UpdateWord = async (id, word) => {
+	console.log(word);
 	try {
 		await Word.update(word, {
 			where: {

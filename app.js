@@ -94,6 +94,20 @@ app.get("/api/lists/:listid/words", async (request, response) => {
 		response.status(406).json({ error: `List not found` });
 		return;
 	}
+
+	if (request.query.count !== undefined) {
+		logger.debug(`Count words for list id ${list.id}`);
+		db.CountWords(list.id)
+			.then((data) => {
+				response.json(data);
+			})
+			.catch((err) => {
+				logger.error(err);
+				response.status(500).json({ error: err });
+			});
+		return;
+	}
+
 	db.GetWords(list.id)
 		.then((words) => {
 			response.json({ Words: words });
